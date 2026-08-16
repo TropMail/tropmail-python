@@ -6,6 +6,7 @@ from types import TracebackType
 
 import httpx
 
+from tropmail import mailboxes as mailbox_routes
 from tropmail._auth import resolve_api_key
 from tropmail._http import (
     DEFAULT_BASE_URL,
@@ -13,11 +14,12 @@ from tropmail._http import (
     DEFAULT_TIMEOUT,
     RequestConfig,
 )
+from tropmail._models import HealthData
 from tropmail._rate_limit import RateLimitInfo
 from tropmail._version import __version__
 from tropmail.attachments import AsyncAttachmentsResource, AttachmentsResource
 from tropmail.emails import AsyncEmailsResource, EmailsResource
-from tropmail.mailbox import AsyncMailboxResource, MailboxResource
+from tropmail.mailboxes import AsyncMailboxesResource, MailboxesResource
 
 _USER_AGENT = f"tropmail-python/{__version__}"
 
@@ -30,7 +32,8 @@ class TropMail:
     """Synchronous client for the TropMail API.
 
     Args:
-        api_key: 32-character API key. Falls back to ``TROPMAIL_API_KEY``.
+        api_key: API key (32 alphanumeric characters, optionally ``tm_live_``).
+            Falls back to ``TROPMAIL_API_KEY``.
         base_url: API base URL including the ``/api/v1`` path.
         timeout: Per-request timeout in seconds. The markdown view can block ~60s.
         max_retries: Retry budget for idempotent requests.
@@ -39,7 +42,8 @@ class TropMail:
 
     Example:
         >>> with TropMail() as client:
-        ...     for email in client.emails.iterate(status="Open"):
+        ...     boxes = client.mailboxes.list()
+        ...     for email in client.emails.iterate(mailbox_id=boxes[0].id, status="Open"):
         ...         print(email.subject)
     """
 
@@ -68,9 +72,13 @@ class TropMail:
             follow_redirects=False,
         )
 
-        self.mailbox = MailboxResource(self)
+        self.mailboxes = MailboxesResource(self)
         self.emails = EmailsResource(self)
         self.attachments = AttachmentsResource(self)
+
+    def health(self) -> HealthData:
+        """Liveness probe. Requires no authentication."""
+        return mailbox_routes.health(self)
 
     @property
     def rate_limit(self) -> RateLimitInfo | None:
@@ -102,7 +110,7 @@ class AsyncTropMail:
 
     Example:
         >>> async with AsyncTropMail() as client:
-        ...     mailbox = await client.mailbox.get()
+        ...     boxes = await client.mailboxes.list()
     """
 
     def __init__(
@@ -130,9 +138,12 @@ class AsyncTropMail:
             follow_redirects=False,
         )
 
-        self.mailbox = AsyncMailboxResource(self)
+        self.mailboxes = AsyncMailboxesResource(self)
         self.emails = AsyncEmailsResource(self)
         self.attachments = AsyncAttachmentsResource(self)
+
+    async def health(self) -> HealthData:
+        return await mailbox_routes.health_async(self)
 
     @property
     def rate_limit(self) -> RateLimitInfo | None:

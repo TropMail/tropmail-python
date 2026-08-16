@@ -10,16 +10,18 @@ from tropmail import NotFoundError, TropMail, TropMailError
 
 
 def main() -> None:
-    # No api_key argument: the client reads TROPMAIL_API_KEY and validates the
-    # format locally, so a malformed key fails before spending a round trip.
     with TropMail() as client:
-        mailbox = client.mailbox.get()
+        boxes = client.mailboxes.list()
+        if not boxes:
+            print("This API key has no mailboxes.")
+            return
+        mailbox = boxes[0]
         print(
             f"{mailbox.email} — {mailbox.opened_count} open, "
             f"{mailbox.closed_count} closed, {mailbox.favorite_count} favorite\n"
         )
 
-        page = client.emails.list(limit=5)
+        page = client.emails.list(mailbox_id=mailbox.id, limit=5)
         if not page.emails:
             print("The mailbox is empty.")
             return
@@ -27,11 +29,9 @@ def main() -> None:
         for email in page.emails:
             print(f"{email.from_.address:<24} {email.subject[:40]:<40} {email.timestamp}")
 
-        # Passing the email object rather than its id forwards the timestamp
-        # for a faster lookup.
         newest = page.emails[0]
         try:
-            detail = client.emails.get(newest, view="text")
+            detail = client.emails.get(mailbox.id, newest, view="text")
         except NotFoundError:
             print("\nThat message was deleted between listing and reading it.")
             return

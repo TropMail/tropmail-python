@@ -10,6 +10,7 @@ import pytest
 from tropmail import AsyncTropMail, TropMail
 
 API_KEY = "a" * 32
+MAILBOX_ID = "550e8400-e29b-41d4-a716-446655440000"
 BASE_URL = "https://api.example.test/api/v1"
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -74,7 +75,7 @@ EMAIL_ITEM = {
     "timestamp": "2026-01-01T00:00:00Z",
     "subject": "Welcome",
     "from": {"name": "Sender", "address": "sender@example.com"},
-    "body": "Preview text",
+    "preview": "Preview text",
     "attachmentsCount": 1,
     "status": "Favorite",
     "email_state": "Open",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from conftest import error_response, make_client
+from conftest import MAILBOX_ID, error_response, make_client
 from tropmail import (
     AuthenticationError,
     MarkdownTimeoutError,
@@ -33,7 +33,7 @@ def test_maps_status_codes_to_error_types(status: int, expected: type[TropMailEr
         return error_response(status, "boom")
 
     with make_client(handler, max_retries=0) as client, pytest.raises(expected) as info:
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
 
     assert info.value.status == status
     assert info.value.message == "boom"
@@ -47,7 +47,7 @@ def test_plain_text_404_is_still_typed() -> None:
         return httpx.Response(404, text="Not Found")
 
     with make_client(handler, max_retries=0) as client, pytest.raises(NotFoundError) as info:
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
 
     assert info.value.message == "Not Found"
 
@@ -57,7 +57,7 @@ def test_rate_limit_error_exposes_retry_after() -> None:
         return error_response(429, "Rate limit exceeded", headers={"Retry-After": "2"})
 
     with make_client(handler, max_retries=0) as client, pytest.raises(RateLimitError) as info:
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
 
     assert info.value.retry_after == 2.0
 
@@ -68,7 +68,7 @@ def test_markdown_timeout_is_its_own_type() -> None:
 
     with make_client(handler, max_retries=0) as client:
         with pytest.raises(MarkdownTimeoutError):
-            client.emails.get_markdown("abc", max_retries=0)
+            client.emails.get_markdown(MAILBOX_ID, "abc", max_retries=0)
 
 
 def test_transport_failure_becomes_connection_error() -> None:
@@ -77,7 +77,7 @@ def test_transport_failure_becomes_connection_error() -> None:
 
     with make_client(handler, max_retries=0) as client:
         with pytest.raises(TropMailConnectionError):
-            client.mailbox.get()
+            client.mailboxes.get(MAILBOX_ID)
 
 
 def test_success_false_envelope_raises() -> None:
@@ -88,6 +88,6 @@ def test_success_false_envelope_raises() -> None:
         )
 
     with make_client(handler, max_retries=0) as client, pytest.raises(TropMailError) as info:
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
 
     assert info.value.message == "nope"

@@ -5,7 +5,8 @@ Quick start::
     from tropmail import TropMail
 
     with TropMail() as client:
-        for email in client.emails.iterate(status="Open"):
+        boxes = client.mailboxes.list()
+        for email in client.emails.iterate(mailbox_id=boxes[0].id, status="Open"):
             print(email.subject, email.from_.address)
 """
 
@@ -35,9 +36,9 @@ from tropmail._models import (
     HealthData,
     ListEmailsData,
     Mailbox,
+    MailboxList,
     ScanReport,
     ScanResponse,
-    ValidateResponse,
 )
 from tropmail._rate_limit import RateLimitInfo
 from tropmail._version import __version__
@@ -63,6 +64,7 @@ __all__ = [
     "InvalidAPIKeyError",
     "ListEmailsData",
     "Mailbox",
+    "MailboxList",
     "MarkdownTimeoutError",
     "NotFoundError",
     "RateLimitError",
@@ -74,7 +76,6 @@ __all__ = [
     "TierError",
     "TropMail",
     "TropMailError",
-    "ValidateResponse",
     "ValidationError",
     "__version__",
     "validate_api_key",

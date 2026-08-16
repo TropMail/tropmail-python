@@ -17,17 +17,18 @@ Requires Python 3.10+. The client reads `TROPMAIL_API_KEY` unless you pass the k
 from tropmail import TropMail
 
 with TropMail() as client:           # reads TROPMAIL_API_KEY
-    mailbox = client.mailbox.get()
+    boxes = client.mailboxes.list()
+    mailbox = boxes[0]
     print(f"{mailbox.email}: {mailbox.opened_count} opened")
 
-    for email in client.emails.iterate(status="Open"):
+    for email in client.emails.iterate(mailbox_id=mailbox.id, status="Open"):
         print(email.timestamp, email.from_.address, email.subject)
 ```
 
 Pass the key explicitly if you prefer:
 
 ```python
-client = TropMail("your32charalphanumericapikeyhere")
+client = TropMail("tm_live_your32charalphanumericapikeyhere")
 ```
 
 ## Async
@@ -38,7 +39,9 @@ from tropmail import AsyncTropMail
 
 async def main() -> None:
     async with AsyncTropMail() as client:
-        async for email in client.emails.iterate(status="Favorite"):
+        boxes = await client.mailboxes.list()
+        mailbox = boxes[0]
+        async for email in client.emails.iterate(mailbox_id=mailbox.id, status="Favorite"):
             print(email.subject)
 
 asyncio.run(main())
@@ -50,10 +53,10 @@ asyncio.run(main())
 instead of a bare id and the SDK forwards its timestamp for a faster lookup.
 
 ```python
-page = client.emails.list(limit=10)
+page = client.emails.list(mailbox_id=mailbox.id, limit=10)
 email = page.emails[0]
 
-detail = client.emails.get(email, view="text")
+detail = client.emails.get(mailbox.id, email, view="text")
 print(detail.content)
 
 for attachment in detail.attachments:
@@ -66,42 +69,42 @@ The markdown view is generated on demand and the server can block for up to a
 minute before answering `504`. `get_markdown()` handles that retry for you:
 
 ```python
-detail = client.emails.get_markdown(email)
+detail = client.emails.get_markdown(mailbox.id, email)
 print(detail.content)
 ```
 
 ## Actions
 
 ```python
-client.emails.favorite(email)
-client.emails.close(email)
-client.emails.block(email)          # also blocks the sender for future mail
-client.emails.clear_action(email)   # clears the action, unblocking the sender
+client.emails.favorite(mailbox.id, email)
+client.emails.close(mailbox.id, email)
+client.emails.block(mailbox.id, email)          # also blocks the sender for future mail
+client.emails.clear_action(mailbox.id, email)   # clears the action, unblocking the sender
 ```
 
 All of them are shorthands for `update()`:
 
 ```python
-client.emails.update(email, email_state="Open", action_status="Favorite")
+client.emails.update(mailbox.id, email, email_state="Open", action_status="Favorite")
 ```
 
 ## Attachments
 
 ```python
-info = client.attachments.get(attachment_id)
+info = client.attachments.get(mailbox.id, attachment_id)
 print(info.filename, info.scan_status)
 
-client.attachments.scan(attachment_id)
-path = client.attachments.download_to(attachment_id, "/tmp/invoice.pdf")
+client.attachments.scan(mailbox.id, attachment_id)
+path = client.attachments.download_to(mailbox.id, attachment_id, "/tmp/invoice.pdf")
 ```
 
-The download URL lives on a separate host, so no API credentials are ever sent to it.
+Downloads use your API key on the same host as the rest of the API.
 
 ## Search
 
 ```python
-page = client.emails.search("invoice", limit=25)
-for email in client.emails.search_iterate("invoice"):
+page = client.emails.search("invoice", mailbox_id=mailbox.id, limit=25)
+for email in client.emails.search_iterate("invoice", mailbox_id=mailbox.id):
     print(email.subject)
 ```
 
@@ -117,7 +120,7 @@ from tropmail import (
 )
 
 try:
-    client.emails.get("does-not-exist")
+    client.emails.get(mailbox.id, "does-not-exist")
 except NotFoundError as exc:
     print(exc.status, exc.request_id)
 except RateLimitError as exc:
@@ -142,11 +145,10 @@ which is what support needs to trace a call.
 
 ## Rate limits
 
-Budgets are per mailbox, per second: Pro 3, Ultimate 10, Enterprise 50.
+Budgets are per account, per second: Pro 3, Ultimate 10, Enterprise 50.
 
-The client reads the limit from response headers and paces itself with a token
-bucket so you stay under the budget instead of collecting `429`s. Inspect the
-current window at any time:
+The client reads the limit from response headers and stays within your
+account budget. Inspect the current window at any time:
 
 ```python
 print(client.rate_limit)   # RateLimitInfo(limit=3, remaining=2, reset=1767225600)
@@ -166,7 +168,7 @@ client = TropMail(
 )
 ```
 
-Retries use exponential backoff with full jitter on 429, 502, 503, 504, and
+Retries with backoff on 429, 502, 503, 504, and
 transport errors. Reads retry automatically; mutations never do.
 
 ## Examples

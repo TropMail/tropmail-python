@@ -11,11 +11,11 @@ import asyncio
 from tropmail import AsyncTropMail, Email, EmailDetail, TropMailError
 
 
-async def read(client: AsyncTropMail, email: Email) -> EmailDetail | None:
+async def read(client: AsyncTropMail, mailbox_id: str, email: Email) -> EmailDetail | None:
     """Fetch one body, returning None instead of raising so one failure does
     not sink the whole batch."""
     try:
-        return await client.emails.get(email, view="text")
+        return await client.emails.get(mailbox_id, email, view="text")
     except TropMailError as error:
         print(f"{email.id}: {error}")
         return None
@@ -23,12 +23,15 @@ async def read(client: AsyncTropMail, email: Email) -> EmailDetail | None:
 
 async def main() -> None:
     async with AsyncTropMail() as client:
-        mailbox = await client.mailbox.get()
+        boxes = await client.mailboxes.list()
+        if not boxes:
+            print("This API key has no mailboxes.")
+            return
+        mailbox = boxes[0]
         print(f"{mailbox.email}\n")
 
-        # Collect the unread messages, capped so the example stays quick.
         unread: list[Email] = []
-        async for email in client.emails.iterate(status="Open"):
+        async for email in client.emails.iterate(mailbox_id=mailbox.id, status="Open"):
             unread.append(email)
             if len(unread) == 10:
                 break
@@ -37,9 +40,9 @@ async def main() -> None:
             print("Nothing unread.")
             return
 
-        # The client's token bucket paces these against the tier's per-second
-        # budget, so firing them all at once will not produce 429s.
-        details = await asyncio.gather(*(read(client, email) for email in unread))
+        details = await asyncio.gather(
+            *(read(client, mailbox.id, email) for email in unread)
+        )
 
         for email, detail in zip(unread, details, strict=True):
             if detail is None:

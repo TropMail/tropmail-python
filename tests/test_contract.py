@@ -1,7 +1,8 @@
-"""Fails when the SDK stops covering every route in the OpenAPI spec.
+"""Fails when the SDK stops covering every canonical route in the OpenAPI spec.
 
-The spec lives in this package (``spec/openapi.json``). When ``Docs/`` is checked
-out next to ``Sdk/`` in the TropMail workspace, the test also asserts they match.
+Docs list inboxes at ``/mailboxes`` and every other operation at ``/mailbox/{id}``.
+The client still calls the ``/mailboxes/{id}`` alias; those requests are mapped
+onto the documented singular templates.
 """
 
 from __future__ import annotations
@@ -14,13 +15,12 @@ from typing import Any
 import httpx
 import pytest
 
-from conftest import json_response, make_client
+from conftest import MAILBOX_ID, json_response, make_client
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = PACKAGE_ROOT / "spec" / "openapi.json"
 DOC_SPEC_PATH = PACKAGE_ROOT.parents[1] / "Docs" / "Doc" / "openapi.json"
 
-# Superset of every model's required fields, so one payload satisfies any decoder.
 ANY_PAYLOAD = {
     "id": "11111111-1111-1111-1111-111111111111",
     "email": "user@tropmail.com",
@@ -28,6 +28,7 @@ ANY_PAYLOAD = {
     "from": {"name": "Sender", "address": "sender@example.com"},
     "attachment_id": "22222222-2222-2222-2222-222222222222",
     "status": "ok",
+    "mailboxes": [],
 }
 
 
@@ -46,22 +47,40 @@ def _spec_operations() -> set[tuple[str, str]]:
 
 
 def _templatize(path: str) -> str:
-    """Turn a concrete request path back into its OpenAPI template."""
     path = path.removeprefix("/api/v1")
-    path = re.sub(r"/email/[^/]+/(text|html|markdown)$", "/email/{id}/{view}", path)
-    path = re.sub(r"/email/[^/]+/scan-attachments$", "/email/{id}/scan-attachments", path)
-    path = re.sub(
-        r"/email/[^/]+/download-attachments$", "/email/{id}/download-attachments", path
-    )
-    path = re.sub(r"/attachment/[^/]+/scan$", "/attachment/{id}/scan", path)
-    path = re.sub(r"/attachment/[^/]+/download$", "/attachment/{id}/download", path)
-    path = re.sub(r"/attachment/[^/]+$", "/attachment/{id}", path)
-    path = re.sub(r"/email/[^/]+$", "/email/{id}", path)
+    if path.startswith("/mailboxes/"):
+        path = "/mailbox/" + path[len("/mailboxes/") :]
+    rules = [
+        (
+            r"/mailbox/[^/]+/emails/[^/]+/(text|html|markdown)$",
+            "/mailbox/{id}/emails/{emailId}/{view}",
+        ),
+        (r"/mailbox/[^/]+/emails/search$", "/mailbox/{id}/emails/search"),
+        (
+            r"/mailbox/[^/]+/emails/[^/]+/scan-attachments$",
+            "/mailbox/{id}/emails/{emailId}/scan-attachments",
+        ),
+        (
+            r"/mailbox/[^/]+/emails/[^/]+/download-attachments$",
+            "/mailbox/{id}/emails/{emailId}/download-attachments",
+        ),
+        (r"/mailbox/[^/]+/attachments/[^/]+/scan$", "/mailbox/{id}/attachments/{attId}/scan"),
+        (
+            r"/mailbox/[^/]+/attachments/[^/]+/download$",
+            "/mailbox/{id}/attachments/{attId}/download",
+        ),
+        (r"/mailbox/[^/]+/attachments/[^/]+$", "/mailbox/{id}/attachments/{attId}"),
+        (r"/mailbox/[^/]+/emails/[^/]+$", "/mailbox/{id}/emails/{emailId}"),
+        (r"/mailbox/[^/]+/emails$", "/mailbox/{id}/emails"),
+        (r"/mailbox/[^/]+$", "/mailbox/{id}"),
+    ]
+    for pattern, template in rules:
+        if re.search(pattern, path):
+            return re.sub(pattern, template, path, count=1)
     return path
 
 
 def _exercise_every_method() -> set[tuple[str, str]]:
-    """Call every SDK method once against a mock and record the routes hit."""
     seen: set[tuple[str, str]] = set()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -80,19 +99,19 @@ def _exercise_every_method() -> set[tuple[str, str]]:
         return json_response(ANY_PAYLOAD)
 
     with make_client(handler) as client:
-        client.mailbox.health()
-        client.mailbox.validate()
-        client.mailbox.get()
-        client.emails.list()
-        client.emails.search("q")
-        client.emails.get("id")
-        client.emails.get("id", view="markdown")
-        client.emails.update("id", email_state="Open")
-        client.emails.scan_attachments("id")
-        client.emails.download_attachments("id")
-        client.attachments.get("aid")
-        client.attachments.scan("aid")
-        client.attachments.download_to("aid", "/tmp/tropmail-contract-aid.pdf")
+        client.health()
+        client.mailboxes.list()
+        client.mailboxes.get(MAILBOX_ID)
+        client.emails.list(mailbox_id=MAILBOX_ID)
+        client.emails.search("q", mailbox_id=MAILBOX_ID)
+        client.emails.get(MAILBOX_ID, "id")
+        client.emails.get(MAILBOX_ID, "id", view="markdown")
+        client.emails.update(MAILBOX_ID, "id", email_state="Open")
+        client.emails.scan_attachments(MAILBOX_ID, "id")
+        client.emails.download_attachments(MAILBOX_ID, "id")
+        client.attachments.get(MAILBOX_ID, "aid")
+        client.attachments.scan(MAILBOX_ID, "aid")
+        client.attachments.download_to(MAILBOX_ID, "aid", "/tmp/tropmail-contract-aid.pdf")
 
     return seen
 

@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import quote
 
 from tropmail._errors import MarkdownTimeoutError
 from tropmail._http import execute_request, execute_request_async, full_jitter_delay
@@ -17,6 +18,7 @@ from tropmail._models import (
     ListEmailsData,
     ScanResponse,
 )
+from tropmail.mailboxes import mailbox_path
 
 if TYPE_CHECKING:
     from tropmail.client import AsyncTropMail, TropMail
@@ -38,8 +40,6 @@ EmailView = Literal["text", "html", "markdown"]
 EmailState = Literal["Open", "Close"]
 ActionStatus = Literal["Favorite", "Delete", "Block", "Phishing", "Scam", "Malicious", ""]
 
-# Resolved here rather than inline: the resources define a `list` method, which
-# shadows the builtin when these appear inside the class body.
 ScanResponseList = list[ScanResponse]
 DownloadResponseList = list[DownloadResponse]
 
@@ -58,8 +58,15 @@ def resolve_email_ref(
     return id_or_email, timestamp
 
 
-def _detail_path(email_id: str, view: EmailView) -> str:
-    return f"/email/{email_id}" if view == "html" else f"/email/{email_id}/{view}"
+def emails_path(mailbox_id: str, *parts: str) -> str:
+    quoted = tuple(quote(part, safe="") for part in parts)
+    return mailbox_path(mailbox_id, "emails", *quoted)
+
+
+def detail_path(mailbox_id: str, email_id: str, view: EmailView) -> str:
+    if view == "html":
+        return emails_path(mailbox_id, email_id)
+    return emails_path(mailbox_id, email_id, view)
 
 
 def _action_body(
@@ -80,7 +87,7 @@ def _action_body(
 
 
 class EmailsResource:
-    """Endpoints under ``/emails`` and ``/email/{id}``."""
+    """Endpoints under ``/mailboxes/{id}/emails``."""
 
     def __init__(self, client: TropMail) -> None:
         self._client = client
@@ -88,6 +95,7 @@ class EmailsResource:
     def list(
         self,
         *,
+        mailbox_id: str,
         limit: int = 10,
         page: int = 1,
         status: StatusFilter = "all",
@@ -96,26 +104,34 @@ class EmailsResource:
         return execute_request(
             self._client._http_client,
             self._client._config,
-            "POST",
-            "/emails",
-            json={"limit": limit, "page": page, "status": status},
+            "GET",
+            emails_path(mailbox_id),
+            params={"limit": str(limit), "page": str(page), "status": status},
             data_type=ListEmailsData,
         )
 
-    def search(self, query: str, *, limit: int = 10, page: int = 1) -> ListEmailsData:
+    def search(
+        self,
+        query: str,
+        *,
+        mailbox_id: str,
+        limit: int = 10,
+        page: int = 1,
+    ) -> ListEmailsData:
         """Full-text search. ``data.total`` is always 0 for search."""
         return execute_request(
             self._client._http_client,
             self._client._config,
-            "POST",
-            "/emails/search",
-            json={"query": query, "limit": limit, "page": page},
+            "GET",
+            emails_path(mailbox_id, "search"),
+            params={"query": query, "limit": str(limit), "page": str(page)},
             data_type=ListEmailsData,
         )
 
     def iterate(
         self,
         *,
+        mailbox_id: str,
         limit: int = 100,
         status: StatusFilter = "all",
         start_page: int = 1,
@@ -127,17 +143,23 @@ class EmailsResource:
         """
         page = start_page
         while True:
-            data = self.list(limit=limit, page=page, status=status)
+            data = self.list(mailbox_id=mailbox_id, limit=limit, page=page, status=status)
             yield from data.emails
             if len(data.emails) < limit:
                 return
             page += 1
 
-    def search_iterate(self, query: str, *, limit: int = 100) -> Iterator[Email]:
+    def search_iterate(
+        self,
+        query: str,
+        *,
+        mailbox_id: str,
+        limit: int = 100,
+    ) -> Iterator[Email]:
         """Yield every search hit, paging automatically."""
         page = 1
         while True:
-            data = self.search(query, limit=limit, page=page)
+            data = self.search(query, mailbox_id=mailbox_id, limit=limit, page=page)
             yield from data.emails
             if len(data.emails) < limit:
                 return
@@ -145,6 +167,7 @@ class EmailsResource:
 
     def get(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         view: EmailView = "html",
@@ -156,13 +179,14 @@ class EmailsResource:
             self._client._http_client,
             self._client._config,
             "GET",
-            _detail_path(email_id, view),
+            detail_path(mailbox_id, email_id, view),
             params={"timestamp": ts} if ts else None,
             data_type=EmailDetail,
         )
 
     def get_markdown(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         timestamp: str | None = None,
@@ -181,7 +205,7 @@ class EmailsResource:
                     self._client._http_client,
                     self._client._config,
                     "GET",
-                    f"/email/{email_id}/markdown",
+                    emails_path(mailbox_id, email_id, "markdown"),
                     params={"timestamp": ts} if ts else None,
                     retry=False,
                     data_type=EmailDetail,
@@ -194,6 +218,7 @@ class EmailsResource:
 
     def update(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         email_state: EmailState | None = None,
@@ -209,56 +234,58 @@ class EmailsResource:
             self._client._http_client,
             self._client._config,
             "POST",
-            f"/email/{email_id}",
+            emails_path(mailbox_id, email_id),
             json=_action_body(email_state, action_status, ts),
             retry=False,
             data_type=EmailActionResult,
         )
 
-    def open(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def open(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Mark an email as opened."""
-        return self.update(id_or_email, email_state="Open", **kwargs)
+        return self.update(mailbox_id, id_or_email, email_state="Open", **kwargs)
 
-    def close(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def close(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Mark an email as closed."""
-        return self.update(id_or_email, email_state="Close", **kwargs)
+        return self.update(mailbox_id, id_or_email, email_state="Close", **kwargs)
 
-    def favorite(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def favorite(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Flag an email as a favorite."""
-        return self.update(id_or_email, action_status="Favorite", **kwargs)
+        return self.update(mailbox_id, id_or_email, action_status="Favorite", **kwargs)
 
-    def block(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def block(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Block the sender and stop future inbound mail from them."""
-        return self.update(id_or_email, action_status="Block", **kwargs)
+        return self.update(mailbox_id, id_or_email, action_status="Block", **kwargs)
 
-    def delete(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def delete(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Soft-delete an email."""
-        return self.update(id_or_email, action_status="Delete", **kwargs)
+        return self.update(mailbox_id, id_or_email, action_status="Delete", **kwargs)
 
-    def clear_action(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def clear_action(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
         """Clear any action status, unblocking the sender if it was blocked."""
-        return self.update(id_or_email, action_status="", **kwargs)
+        return self.update(mailbox_id, id_or_email, action_status="", **kwargs)
 
-    def scan_attachments(self, id_or_email: EmailRef) -> ScanResponseList:
+    def scan_attachments(self, mailbox_id: str, id_or_email: EmailRef) -> ScanResponseList:
         """Kick off scans for every unscanned attachment on an email."""
         email_id, _ = resolve_email_ref(id_or_email)
         return execute_request(
             self._client._http_client,
             self._client._config,
             "POST",
-            f"/email/{email_id}/scan-attachments",
+            emails_path(mailbox_id, email_id, "scan-attachments"),
             retry=False,
             data_type=ScanResponseList,
         )
 
-    def download_attachments(self, id_or_email: EmailRef) -> DownloadResponseList:
+    def download_attachments(self, mailbox_id: str, id_or_email: EmailRef) -> DownloadResponseList:
         """List attachments for authenticated download (use attachments.download_to)."""
         email_id, _ = resolve_email_ref(id_or_email)
         return execute_request(
             self._client._http_client,
             self._client._config,
             "GET",
-            f"/email/{email_id}/download-attachments",
+            emails_path(mailbox_id, email_id, "download-attachments"),
             data_type=DownloadResponseList,
         )
 
@@ -272,6 +299,7 @@ class AsyncEmailsResource:
     async def list(
         self,
         *,
+        mailbox_id: str,
         limit: int = 10,
         page: int = 1,
         status: StatusFilter = "all",
@@ -279,42 +307,58 @@ class AsyncEmailsResource:
         return await execute_request_async(
             self._client._http_client,
             self._client._config,
-            "POST",
-            "/emails",
-            json={"limit": limit, "page": page, "status": status},
+            "GET",
+            emails_path(mailbox_id),
+            params={"limit": str(limit), "page": str(page), "status": status},
             data_type=ListEmailsData,
         )
 
-    async def search(self, query: str, *, limit: int = 10, page: int = 1) -> ListEmailsData:
+    async def search(
+        self,
+        query: str,
+        *,
+        mailbox_id: str,
+        limit: int = 10,
+        page: int = 1,
+    ) -> ListEmailsData:
         return await execute_request_async(
             self._client._http_client,
             self._client._config,
-            "POST",
-            "/emails/search",
-            json={"query": query, "limit": limit, "page": page},
+            "GET",
+            emails_path(mailbox_id, "search"),
+            params={"query": query, "limit": str(limit), "page": str(page)},
             data_type=ListEmailsData,
         )
 
     async def iterate(
         self,
         *,
+        mailbox_id: str,
         limit: int = 100,
         status: StatusFilter = "all",
         start_page: int = 1,
     ) -> AsyncIterator[Email]:
         page = start_page
         while True:
-            data = await self.list(limit=limit, page=page, status=status)
+            data = await self.list(
+                mailbox_id=mailbox_id, limit=limit, page=page, status=status
+            )
             for email in data.emails:
                 yield email
             if len(data.emails) < limit:
                 return
             page += 1
 
-    async def search_iterate(self, query: str, *, limit: int = 100) -> AsyncIterator[Email]:
+    async def search_iterate(
+        self,
+        query: str,
+        *,
+        mailbox_id: str,
+        limit: int = 100,
+    ) -> AsyncIterator[Email]:
         page = 1
         while True:
-            data = await self.search(query, limit=limit, page=page)
+            data = await self.search(query, mailbox_id=mailbox_id, limit=limit, page=page)
             for email in data.emails:
                 yield email
             if len(data.emails) < limit:
@@ -323,6 +367,7 @@ class AsyncEmailsResource:
 
     async def get(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         view: EmailView = "html",
@@ -333,13 +378,14 @@ class AsyncEmailsResource:
             self._client._http_client,
             self._client._config,
             "GET",
-            _detail_path(email_id, view),
+            detail_path(mailbox_id, email_id, view),
             params={"timestamp": ts} if ts else None,
             data_type=EmailDetail,
         )
 
     async def get_markdown(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         timestamp: str | None = None,
@@ -353,7 +399,7 @@ class AsyncEmailsResource:
                     self._client._http_client,
                     self._client._config,
                     "GET",
-                    f"/email/{email_id}/markdown",
+                    emails_path(mailbox_id, email_id, "markdown"),
                     params={"timestamp": ts} if ts else None,
                     retry=False,
                     data_type=EmailDetail,
@@ -366,6 +412,7 @@ class AsyncEmailsResource:
 
     async def update(
         self,
+        mailbox_id: str,
         id_or_email: EmailRef,
         *,
         email_state: EmailState | None = None,
@@ -377,47 +424,63 @@ class AsyncEmailsResource:
             self._client._http_client,
             self._client._config,
             "POST",
-            f"/email/{email_id}",
+            emails_path(mailbox_id, email_id),
             json=_action_body(email_state, action_status, ts),
             retry=False,
             data_type=EmailActionResult,
         )
 
-    async def open(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, email_state="Open", **kwargs)
+    async def open(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, email_state="Open", **kwargs)
 
-    async def close(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, email_state="Close", **kwargs)
+    async def close(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, email_state="Close", **kwargs)
 
-    async def favorite(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, action_status="Favorite", **kwargs)
+    async def favorite(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Favorite", **kwargs)
 
-    async def block(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, action_status="Block", **kwargs)
+    async def block(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Block", **kwargs)
 
-    async def delete(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, action_status="Delete", **kwargs)
+    async def delete(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Delete", **kwargs)
 
-    async def clear_action(self, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
-        return await self.update(id_or_email, action_status="", **kwargs)
+    async def clear_action(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="", **kwargs)
 
-    async def scan_attachments(self, id_or_email: EmailRef) -> ScanResponseList:
+    async def scan_attachments(
+        self, mailbox_id: str, id_or_email: EmailRef
+    ) -> ScanResponseList:
         email_id, _ = resolve_email_ref(id_or_email)
         return await execute_request_async(
             self._client._http_client,
             self._client._config,
             "POST",
-            f"/email/{email_id}/scan-attachments",
+            emails_path(mailbox_id, email_id, "scan-attachments"),
             retry=False,
             data_type=ScanResponseList,
         )
 
-    async def download_attachments(self, id_or_email: EmailRef) -> DownloadResponseList:
+    async def download_attachments(
+        self, mailbox_id: str, id_or_email: EmailRef
+    ) -> DownloadResponseList:
         email_id, _ = resolve_email_ref(id_or_email)
         return await execute_request_async(
             self._client._http_client,
             self._client._config,
             "GET",
-            f"/email/{email_id}/download-attachments",
+            emails_path(mailbox_id, email_id, "download-attachments"),
             data_type=DownloadResponseList,
         )

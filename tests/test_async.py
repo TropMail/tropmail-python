@@ -5,7 +5,14 @@ from typing import Any
 import httpx
 import pytest
 
-from conftest import EMAIL_DETAIL, EMAIL_ITEM, error_response, json_response, make_async_client
+from conftest import (
+    EMAIL_DETAIL,
+    EMAIL_ITEM,
+    MAILBOX_ID,
+    error_response,
+    json_response,
+    make_async_client,
+)
 from tropmail import NotFoundError
 
 
@@ -23,7 +30,7 @@ async def test_async_mailbox_get() -> None:
         return json_response({"id": "m1", "email": "user@tropmail.com", "opened_count": 7})
 
     async with make_async_client(handler) as client:
-        mailbox = await client.mailbox.get()
+        mailbox = await client.mailboxes.get(MAILBOX_ID)
 
     assert mailbox.opened_count == 7
 
@@ -38,7 +45,9 @@ async def test_async_iterate_pages_until_short_page() -> None:
         return response
 
     async with make_async_client(handler) as client:
-        collected = [email async for email in client.emails.iterate(limit=10)]
+        collected = [
+            email async for email in client.emails.iterate(mailbox_id=MAILBOX_ID, limit=10)
+        ]
 
     assert len(collected) == 14
 
@@ -49,7 +58,7 @@ async def test_async_errors_are_typed() -> None:
 
     async with make_async_client(handler, max_retries=0) as client:
         with pytest.raises(NotFoundError):
-            await client.emails.get("missing")
+            await client.emails.get(MAILBOX_ID, "missing")
 
 
 async def test_async_get_detail() -> None:
@@ -57,6 +66,6 @@ async def test_async_get_detail() -> None:
         return json_response(EMAIL_DETAIL)
 
     async with make_async_client(handler) as client:
-        detail = await client.emails.get("abc", view="text")
+        detail = await client.emails.get(MAILBOX_ID, "abc", view="text")
 
     assert detail.content == "<p>Hello</p>"

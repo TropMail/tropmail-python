@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import re
 
-_API_KEY_PATTERN = re.compile(r"^[A-Za-z0-9]{32}$")
+_LEGACY_KEY = re.compile(r"^[A-Za-z0-9]{32}$")
+_LIVE_KEY = re.compile(r"^tm_live_[A-Za-z0-9]{32}$")
 
 
 class InvalidAPIKeyError(ValueError):
@@ -11,9 +12,9 @@ class InvalidAPIKeyError(ValueError):
 
 
 def validate_api_key(key: str) -> str:
-    if not _API_KEY_PATTERN.match(key):
+    if not _LEGACY_KEY.match(key) and not _LIVE_KEY.match(key):
         raise InvalidAPIKeyError(
-            "API key must be exactly 32 alphanumeric characters (A-Z, a-z, 0-9)"
+            "API key must be 32 alphanumeric characters, optionally prefixed with tm_live_"
         )
     return key
 

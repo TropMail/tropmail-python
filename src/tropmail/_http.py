@@ -32,7 +32,6 @@ DEFAULT_MAX_RETRIES = 3
 DEFAULT_TIMEOUT = 120.0
 
 RETRYABLE_STATUSES = frozenset({429, 502, 503, 504})
-READ_ONLY_POST_PATHS = frozenset({"/emails", "/emails/search"})
 
 _ERROR_DECODER = msgspec.json.Decoder(ErrorEnvelope)
 _decoder_cache: dict[Any, msgspec.json.Decoder[Any]] = {}
@@ -54,11 +53,10 @@ def full_jitter_delay(attempt: int, base: float = 0.5, cap: float = 30.0) -> flo
 
 
 def _is_retryable_request(method: str, path: str, retry: bool) -> bool:
+    del path
     if not retry:
         return False
-    if method.upper() == "GET":
-        return True
-    return method.upper() == "POST" and path in READ_ONLY_POST_PATHS
+    return method.upper() == "GET"
 
 
 class RequestConfig:

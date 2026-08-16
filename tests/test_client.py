@@ -9,6 +9,7 @@ from conftest import (
     API_KEY,
     EMAIL_DETAIL,
     EMAIL_ITEM,
+    MAILBOX_ID,
     json_response,
     make_client,
 )
@@ -42,11 +43,11 @@ def test_sends_bearer_token_and_request_id() -> None:
         return json_response({"id": "m1", "email": "a@b.dev"})
 
     with make_client(handler) as client:
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
 
     assert seen["auth"] == f"Bearer {API_KEY}"
     assert seen["request_id"]
-    assert seen["url"].endswith("/api/v1/mailbox")
+    assert seen["url"].endswith(f"/api/v1/mailboxes/{MAILBOX_ID}")
 
 
 def test_unwraps_envelope_into_typed_model() -> None:
@@ -62,7 +63,7 @@ def test_unwraps_envelope_into_typed_model() -> None:
         )
 
     with make_client(handler) as client:
-        mailbox = client.mailbox.get()
+        mailbox = client.mailboxes.get(MAILBOX_ID)
 
     assert mailbox.email == "user@tropmail.com"
     assert mailbox.opened_count == 3
@@ -74,7 +75,7 @@ def test_maps_reserved_json_keys() -> None:
         return json_response({"emails": [EMAIL_ITEM], "total": 5, "limit": 10, "page": 1})
 
     with make_client(handler) as client:
-        page = client.emails.list()
+        page = client.emails.list(mailbox_id=MAILBOX_ID)
 
     email = page.emails[0]
     assert email.from_.address == "sender@example.com"
@@ -87,7 +88,7 @@ def test_email_detail_parses_attachments() -> None:
         return json_response(EMAIL_DETAIL)
 
     with make_client(handler) as client:
-        detail = client.emails.get(EMAIL_DETAIL["id"])
+        detail = client.emails.get(MAILBOX_ID, EMAIL_DETAIL["id"])
 
     assert detail.subject == "Welcome"
     assert detail.attachments[0].filename == "invoice.pdf"
@@ -103,10 +104,13 @@ def test_html_view_uses_bare_path_and_other_views_append() -> None:
         return json_response(EMAIL_DETAIL)
 
     with make_client(handler) as client:
-        client.emails.get("abc")
-        client.emails.get("abc", view="text")
+        client.emails.get(MAILBOX_ID, "abc")
+        client.emails.get(MAILBOX_ID, "abc", view="text")
 
-    assert paths == ["/api/v1/email/abc", "/api/v1/email/abc/text"]
+    assert paths == [
+        f"/api/v1/mailboxes/{MAILBOX_ID}/emails/abc",
+        f"/api/v1/mailboxes/{MAILBOX_ID}/emails/abc/text",
+    ]
 
 
 def test_forwards_timestamp_from_email_object() -> None:
@@ -122,7 +126,7 @@ def test_forwards_timestamp_from_email_object() -> None:
         from_=EmailFrom(name="", address="a@b.dev"),
     )
     with make_client(handler) as client:
-        client.emails.get(email)
+        client.emails.get(MAILBOX_ID, email)
 
     assert captured["timestamp"] == "2026-01-01T00:00:00Z"
 
@@ -140,7 +144,7 @@ def test_records_rate_limit_snapshot() -> None:
 
     with make_client(handler) as client:
         assert client.rate_limit is None
-        client.mailbox.get()
+        client.mailboxes.get(MAILBOX_ID)
         snapshot = client.rate_limit
 
     assert snapshot is not None
@@ -155,7 +159,7 @@ def test_health_skips_authorization() -> None:
         return json_response({"status": "ok", "version": "1.0.0", "timestamp": "t"})
 
     with make_client(handler) as client:
-        health = client.mailbox.health()
+        health = client.health()
 
     assert seen["auth"] is None
     assert health.status == "ok"
@@ -166,7 +170,7 @@ def test_action_result_parses_block_response() -> None:
         return json_response({"action_status": "Block", "sender_email": "spam@bad.test"})
 
     with make_client(handler) as client:
-        result = client.emails.block("abc")
+        result = client.emails.block(MAILBOX_ID, "abc")
 
     assert result.action_status == "Block"
     assert result.sender_email == "spam@bad.test"
@@ -177,7 +181,7 @@ def test_update_requires_at_least_one_field() -> None:
         return json_response({})
 
     with make_client(handler) as client, pytest.raises(ValueError):
-        client.emails.update("abc")
+        client.emails.update(MAILBOX_ID, "abc")
 
 
 def test_scan_attachments_returns_list() -> None:
@@ -196,7 +200,7 @@ def test_scan_attachments_returns_list() -> None:
         )
 
     with make_client(handler) as client:
-        results = client.emails.scan_attachments("e1")
+        results = client.emails.scan_attachments(MAILBOX_ID, "e1")
 
     assert len(results) == 1
     assert results[0].scan_status == "Processing"

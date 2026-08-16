@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, Generic, TypeVar
 
 import msgspec
@@ -17,13 +18,13 @@ class EmailFrom(msgspec.Struct):
 
 
 class Email(msgspec.Struct):
-    """A list item from ``POST /emails`` or ``POST /emails/search``."""
+    """A list item from ``GET /mailboxes/{id}/emails`` or search."""
 
     id: str
     timestamp: str
     from_: EmailFrom = msgspec.field(name="from")
     subject: str = ""
-    body: str = ""
+    preview: str = ""
     attachments_count: int = msgspec.field(name="attachmentsCount", default=0)
     status: str = ""
     email_state: str = ""
@@ -79,7 +80,7 @@ class EmailAttachment(msgspec.Struct):
 
 
 class EmailDetail(msgspec.Struct):
-    """Full email detail from ``GET /email/{id}[/{view}]``."""
+    """Full email detail from ``GET /mailboxes/{id}/emails/{emailId}``."""
 
     id: str
     from_: EmailFrom = msgspec.field(name="from")
@@ -97,7 +98,7 @@ class EmailDetail(msgspec.Struct):
 
 
 class EmailActionResult(msgspec.Struct):
-    """Result of ``POST /email/{id}``.
+    """Result of ``POST /mailboxes/{id}/emails/{emailId}``.
 
     The handler returns a dynamic object: state/action updates echo the fields that
     changed, while a ``Block`` action returns ``action_status`` plus ``sender_email``.
@@ -110,7 +111,7 @@ class EmailActionResult(msgspec.Struct):
 
 
 class Mailbox(msgspec.Struct):
-    """Mailbox summary from ``GET /mailbox``."""
+    """Mailbox summary from ``GET /mailboxes/{id}``."""
 
     id: str
     email: str
@@ -119,8 +120,27 @@ class Mailbox(msgspec.Struct):
     favorite_count: int = 0
 
 
+class MailboxList(msgspec.Struct):
+    """Payload of ``GET /mailboxes``.
+
+    Sequence-like so ``client.mailboxes.list()[0]`` works alongside
+    ``.mailboxes[0]``.
+    """
+
+    mailboxes: list[Mailbox] = msgspec.field(default_factory=list)
+
+    def __iter__(self) -> Iterator[Mailbox]:
+        return iter(self.mailboxes)
+
+    def __len__(self) -> int:
+        return len(self.mailboxes)
+
+    def __getitem__(self, index: int) -> Mailbox:
+        return self.mailboxes[index]
+
+
 class Attachment(msgspec.Struct):
-    """Attachment metadata from ``GET /attachment/{id}``."""
+    """Attachment metadata from ``GET /mailboxes/{id}/attachments/{attId}``."""
 
     attachment_id: str
     email_id: str = ""
@@ -134,7 +154,7 @@ class Attachment(msgspec.Struct):
 
 
 class DownloadResponse(msgspec.Struct):
-    """Metadata from ``GET /email/{id}/download-attachments``.
+    """Metadata from ``GET /mailboxes/{id}/emails/{emailId}/download-attachments``.
 
     Fetch bytes with :meth:`AttachmentsResource.download_to`.
     """
@@ -151,7 +171,7 @@ class DownloadResponse(msgspec.Struct):
 
 
 class ScanResponse(msgspec.Struct):
-    """Scan result from ``POST /attachment/{id}/scan``."""
+    """Scan result from ``POST /mailboxes/{id}/attachments/{attId}/scan``."""
 
     attachment_id: str = ""
     email_id: str = ""
@@ -162,13 +182,6 @@ class ScanResponse(msgspec.Struct):
     mime_type: str | None = None
     scan_status: str = "NotScanned"
     scanned_at: str | None = None
-
-
-class ValidateResponse(msgspec.Struct):
-    """API key validation result from ``GET /validate``."""
-
-    mailbox_id: str = ""
-    tier: str = ""
 
 
 class HealthData(msgspec.Struct):
