@@ -18,7 +18,7 @@ class EmailFrom(msgspec.Struct):
 
 
 class Email(msgspec.Struct):
-    """A list item from ``GET /mailboxes/{id}/emails`` or search."""
+    """A list item from ``GET /mailbox/{id}/emails`` or search."""
 
     id: str
     timestamp: str
@@ -74,13 +74,23 @@ class EmailAttachment(msgspec.Struct):
     filename: str | None = None
     size: int | None = None
     mime_type: str | None = None
+    content_id: str | None = None
+    disposition: str | None = None
     scan_status: str = "NotScanned"
     scan_result: ScanReport | None = None
     scanned_at: str | None = None
 
 
+class EmailParts(msgspec.Struct):
+    """Optional extras from inbound (newer mail only)."""
+
+    listUnsubscribe: dict[str, Any] | None = None
+    calendar: dict[str, Any] | None = None
+    inlineCids: dict[str, str] | None = None
+
+
 class EmailDetail(msgspec.Struct):
-    """Full email detail from ``GET /mailboxes/{id}/emails/{emailId}``."""
+    """Full email detail from ``GET /mailbox/{id}/emails/{emailId}``."""
 
     id: str
     from_: EmailFrom = msgspec.field(name="from")
@@ -93,12 +103,13 @@ class EmailDetail(msgspec.Struct):
     email_state: str = ""
     action_status: str | None = None
     attachments: list[EmailAttachment] = msgspec.field(default_factory=list)
+    parts: EmailParts | None = None
     headers: dict[str, Any] = msgspec.field(default_factory=dict)
     security: dict[str, Any] = msgspec.field(default_factory=dict)
 
 
 class EmailActionResult(msgspec.Struct):
-    """Result of ``POST /mailboxes/{id}/emails/{emailId}``.
+    """Result of ``POST /mailbox/{id}/emails/{emailId}``.
 
     The handler returns a dynamic object: state/action updates echo the fields that
     changed, while a ``Block`` action returns ``action_status`` plus ``sender_email``.
@@ -111,7 +122,7 @@ class EmailActionResult(msgspec.Struct):
 
 
 class Mailbox(msgspec.Struct):
-    """Mailbox summary from ``GET /mailboxes/{id}``."""
+    """Mailbox summary from ``GET /mailbox/{id}``."""
 
     id: str
     email: str
@@ -140,13 +151,15 @@ class MailboxList(msgspec.Struct):
 
 
 class Attachment(msgspec.Struct):
-    """Attachment metadata from ``GET /mailboxes/{id}/attachments/{attId}``."""
+    """Attachment metadata from ``GET /mailbox/{id}/attachments/{attId}``."""
 
     attachment_id: str
     email_id: str = ""
     filename: str = ""
     size: int | None = None
     mime_type: str | None = None
+    content_id: str | None = None
+    disposition: str | None = None
     scan_status: str = "NotScanned"
     scan_result: ScanReport | None = None
     scanned_at: str | None = None
@@ -154,7 +167,7 @@ class Attachment(msgspec.Struct):
 
 
 class DownloadResponse(msgspec.Struct):
-    """Metadata from ``GET /mailboxes/{id}/emails/{emailId}/download-attachments``.
+    """Metadata from ``GET /mailbox/{id}/emails/{emailId}/download-attachments``.
 
     Fetch bytes with :meth:`AttachmentsResource.download_to`.
     """
@@ -171,7 +184,10 @@ class DownloadResponse(msgspec.Struct):
 
 
 class ScanResponse(msgspec.Struct):
-    """Scan result from ``POST /mailboxes/{id}/attachments/{attId}/scan``."""
+    """Response from ``POST /mailbox/{id}/attachments/{attId}/scan``.
+
+    A new scan is ``Processing``. Call ``attachments.get`` for ``scan_result``.
+    """
 
     attachment_id: str = ""
     email_id: str = ""
