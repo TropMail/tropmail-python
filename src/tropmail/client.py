@@ -32,7 +32,7 @@ class TropMail:
     """Synchronous client for the TropMail API.
 
     Args:
-        api_key: API key (32 alphanumeric characters, optionally ``tm_live_``).
+        api_key: API key from the dashboard (starts with ``tm_live_``).
             Falls back to ``TROPMAIL_API_KEY``.
         base_url: API base URL including the ``/api/v1`` path.
         timeout: Per-request timeout in seconds. The markdown view can block ~60s.

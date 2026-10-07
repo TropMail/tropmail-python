@@ -28,7 +28,7 @@ with TropMail() as client:           # reads TROPMAIL_API_KEY
 Pass the key explicitly if you prefer:
 
 ```python
-client = TropMail("tm_live_your32charalphanumericapikeyhere")
+client = TropMail("YOUR_API_KEY")
 ```
 
 ## Async
