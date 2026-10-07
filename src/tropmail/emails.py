@@ -30,7 +30,6 @@ StatusFilter = Literal[
     "Open",
     "Close",
     "Favorite",
-    "Delete",
     "Block",
     "Phishing",
     "Scam",
