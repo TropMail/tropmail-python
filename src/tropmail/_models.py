@@ -211,8 +211,8 @@ class HealthData(msgspec.Struct):
 class ListEmailsData(msgspec.Struct):
     """Paginated email list.
 
-    ``total`` is the mailbox-wide ``opened_count + closed_count`` for list calls and
-    is always ``0`` for search. Never use it to drive pagination.
+    ``total`` on list is ``opened_count + closed_count``. ``total`` on search is
+    the match count. Iterators still stop on a short page.
     """
 
     emails: list[Email] = msgspec.field(default_factory=list)

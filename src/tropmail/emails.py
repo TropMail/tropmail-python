@@ -117,7 +117,7 @@ class EmailsResource:
         limit: int = 10,
         page: int = 1,
     ) -> ListEmailsData:
-        """Full-text search. ``data.total`` is always 0 for search."""
+        """Full-text search. ``data.total`` is the match count."""
         return execute_request(
             self._client._http_client,
             self._client._config,
