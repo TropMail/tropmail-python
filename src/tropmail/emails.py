@@ -261,7 +261,9 @@ class EmailsResource:
         """File the message as phishing. It leaves the inbox and does not block future mail."""
         return self.update(mailbox_id, id_or_email, action_status="Phishing", **kwargs)
 
-    def report_scam(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+    def report_scam(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
         """File the message as a scam. It leaves the inbox and does not block future mail."""
         return self.update(mailbox_id, id_or_email, action_status="Scam", **kwargs)
 
