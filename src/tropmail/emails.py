@@ -255,6 +255,22 @@ class EmailsResource:
         """Block the sender and stop future inbound mail from them."""
         return self.update(mailbox_id, id_or_email, action_status="Block", **kwargs)
 
+    def report_phishing(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        """File the message as phishing. It leaves the inbox and does not block future mail."""
+        return self.update(mailbox_id, id_or_email, action_status="Phishing", **kwargs)
+
+    def report_scam(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
+        """File the message as a scam. It leaves the inbox and does not block future mail."""
+        return self.update(mailbox_id, id_or_email, action_status="Scam", **kwargs)
+
+    def report_malicious(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        """File the message as malicious. It leaves the inbox and does not block future mail."""
+        return self.update(mailbox_id, id_or_email, action_status="Malicious", **kwargs)
+
     def delete(self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any) -> EmailActionResult:
         """Soft-delete an email."""
         return self.update(mailbox_id, id_or_email, action_status="Delete", **kwargs)
@@ -448,6 +464,21 @@ class AsyncEmailsResource:
         self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
     ) -> EmailActionResult:
         return await self.update(mailbox_id, id_or_email, action_status="Block", **kwargs)
+
+    async def report_phishing(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Phishing", **kwargs)
+
+    async def report_scam(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Scam", **kwargs)
+
+    async def report_malicious(
+        self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any
+    ) -> EmailActionResult:
+        return await self.update(mailbox_id, id_or_email, action_status="Malicious", **kwargs)
 
     async def delete(
         self, mailbox_id: str, id_or_email: EmailRef, **kwargs: Any

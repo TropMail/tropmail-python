@@ -79,6 +79,7 @@ print(detail.content)
 client.emails.favorite(mailbox.id, email)
 client.emails.close(mailbox.id, email)
 client.emails.block(mailbox.id, email)          # also blocks the sender for future mail
+client.emails.report_phishing(mailbox.id, email) # files a report; does not block future mail
 client.emails.clear_action(mailbox.id, email)   # clears the action, unblocking the sender
 ```
 

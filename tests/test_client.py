@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -174,6 +175,20 @@ def test_action_result_parses_block_response() -> None:
 
     assert result.action_status == "Block"
     assert result.sender_email == "spam@bad.test"
+
+
+def test_report_phishing_posts_action_status() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return json_response({"action_status": "Phishing"})
+
+    with make_client(handler) as client:
+        result = client.emails.report_phishing(MAILBOX_ID, "abc")
+
+    assert seen["body"]["action_status"] == "Phishing"
+    assert result.action_status == "Phishing"
 
 
 def test_update_requires_at_least_one_field() -> None:
